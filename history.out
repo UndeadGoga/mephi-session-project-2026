@@ -1,0 +1,154 @@
+    1  whoami
+    2  cat /etc/os-release
+    3  cat >> /root/.bashrc <<'EOF'
+    4  # MEPHI project: retain commands across reboots
+    5  HISTSIZE=50000
+    6  HISTFILESIZE=100000
+    7  HISTCONTROL=
+    8  HISTIGNORE=
+    9  shopt -s histappend
+   10  EOF
+   11  source /root/.bashrc
+   12  set -o history
+   13  umask 0022
+   14  mkdir -p /root/mephi-backup
+   15  chmod 0700 /root/mephi-backup
+   16  command cp -an /etc/fstab /etc/login.defs /etc/pam.d/login /etc/security/pwquality.conf /root/mephi-backup/
+   17  command cp -an /etc/selinux/config /root/mephi-backup/selinux-config
+   18  mkdir -p /root/mephi-session-project-2026
+   19  chmod 0700 /root/mephi-session-project-2026
+   20  hostnamectl --static
+   21  ping -c 4 8.8.8.8 > /root/ping.out 2>&1
+   22  cat /root/ping.out
+   23  dnf -y upgrade --refresh
+   24  dnf -y install nginx libcap-ng-utils libcap dnf-plugins-core     acl e2fsprogs parted policycoreutils policycoreutils-python-utils     selinux-policy-targeted libpwquality authselect shadow-utils     curl git jq sudo openssh-server grubby
+   25  mephi_install_tcpdump() {     local rpm_dir pkg tcpdump_rpm;     local -a deps=() tcpdump_rpms=();     rpm_dir=$(mktemp -d /tmp/mephi-rpms.XXXXXX) || return 1;     dnf download --resolve --alldeps --downloaddir="$rpm_dir" "tcpdump.$(rpm --eval '%{_arch}')" || return 1;     for pkg in "$rpm_dir"/*.rpm; do         [[ -f "$pkg" ]] || continue;         if [[ "$(rpm -qp --qf '%{NAME}' "$pkg")" == tcpdump ]]; then             tcpdump_rpms+=("$pkg");         else             deps+=("$pkg");         fi;     done;     [[ ${#tcpdump_rpms[@]} -eq 1 ]] || { echo 'Ожидался один RPM tcpdump'; return 1; };     if [[ ${#deps[@]} -gt 0 ]]; then         dnf -y install "${deps[@]}" || return 1;     fi;     tcpdump_rpm=${tcpdump_rpms[0]};     rpm -K "$tcpdump_rpm" || return 1;     rpm -Uvh --replacepkgs "$tcpdump_rpm" || return 1;     rpm -q tcpdump nginx libcap-ng-utils;     dnf history > /root/dnf.out; }
+   26  mephi_install_tcpdump
+   27  rpm -qi tcpdump > "/root/mephi-session-project-2026/tcpdump-rpm.out"
+   28  getenforce
+   29  sed -i -E 's/^[[:space:]]*SELINUX=.*/SELINUX=enforcing/' /etc/selinux/config
+   30  grubby --update-kernel=ALL --remove-args='selinux=0 enforcing=0'
+   31  setenforce 1
+   32  getenforce
+   33  getenforce
+   34  grep -E '^(SELINUX|SELINUXTYPE)=' /etc/selinux/config
+   35  reboot
+   36  getenforce
+   37  sed -i -E 's/^[[:space:]]*SELINUX=.*/SELINUX=enforcing/' /etc/selinux/config
+   38  setenforce 1
+   39  getenforce
+   40  getenforce
+   41  grep -E '^(SELINUX|SELINUXTYPE)=' /etc/selinux/config
+   42  mephi_prepare_disk() {     local disk confirm part signatures;     lsblk -e 7 -o NAME,PATH,SIZE,TYPE,FSTYPE,LABEL,MOUNTPOINTS;     read -r -p 'Полный путь к ПУСТОМУ второму диску: ' disk;     [[ "$disk" == /dev/* && -b "$disk" ]] || { echo 'Это не блочное устройство'; return 1; };     [[ "$(lsblk -dn -o TYPE "$disk")" == disk ]] || { echo 'Нужен целый диск'; return 1; };     [[ "$(lsblk -nr -o NAME "$disk" | wc -l)" -eq 1 ]] || { echo 'На диске есть разделы/дочерние устройства. СТОП'; return 1; };     if lsblk -nr -o MOUNTPOINTS "$disk" | grep -q '[^[:space:]]'; then         echo 'Диск используется. СТОП'; return 1;     fi;     signatures=$(wipefs --no-act --noheadings --output TYPE "$disk") || return 1;     [[ -z "$signatures" ]] || { echo 'Найдены сигнатуры. Нужен новый пустой диск'; return 1; };     if blkid -L MEPHI_WEB >/dev/null 2>&1; then         echo 'Метка MEPHI_WEB уже существует. Повторно форматировать не надо'; return 1;     fi;     lsblk -d -o PATH,SIZE,MODEL,SERIAL "$disk";     read -r -p "Для форматирования введите точно ERASE $disk : " confirm;     [[ "$confirm" == "ERASE $disk" ]] || { echo 'Отменено'; return 1; };     parted -s "$disk" mklabel gpt || return 1;     parted -s -a optimal "$disk" mkpart primary ext4 1MiB 100% || return 1;     partprobe "$disk" || return 1;     udevadm settle || return 1;     part=$(lsblk -nrpo NAME,TYPE "$disk" | awk '$2=="part" {print $1}');     [[ -n "$part" && "$part" != *$'\n'* && -b "$part" ]] || { echo 'Не найден единственный раздел'; return 1; };     mkfs.ext4 -L MEPHI_WEB "$part" || return 1;     blkid "$part"; }
+   43  mephi_prepare_disk
+   44  mephi_prepare_disk() {     local disk confirm part signatures;     lsblk -e 7 -o NAME,PATH,SIZE,TYPE,FSTYPE,LABEL,MOUNTPOINTS;     read -r -p 'Полный путь к ПУСТОМУ второму диску: ' disk;     [[ "$disk" == /dev/* && -b "$disk" ]] || { echo 'Это не блочное устройство'; return 1; };     [[ "$(lsblk -dn -o TYPE "$disk")" == disk ]] || { echo 'Нужен целый диск'; return 1; };     [[ "$(lsblk -nr -o NAME "$disk" | wc -l)" -eq 1 ]] || { echo 'На диске есть разделы/дочерние устройства. СТОП'; return 1; };     if lsblk -nr -o MOUNTPOINTS "$disk" | grep -q '[^[:space:]]'; then         echo 'Диск используется. СТОП'; return 1;     fi;     signatures=$(wipefs --no-act --noheadings --output TYPE "$disk") || return 1;     [[ -z "$signatures" ]] || { echo 'Найдены сигнатуры. Нужен новый пустой диск'; return 1; };     if blkid -L MEPHI_WEB >/dev/null 2>&1; then         echo 'Метка MEPHI_WEB уже существует. Повторно форматировать не надо'; return 1;     fi;     lsblk -d -o PATH,SIZE,MODEL,SERIAL "$disk";     read -r -p "Для форматирования введите точно ERASE $disk : " confirm;     [[ "$confirm" == "ERASE $disk" ]] || { echo 'Отменено'; return 1; };     parted -s "$disk" mklabel gpt || return 1;     parted -s -a optimal "$disk" mkpart primary ext4 1MiB 100% || return 1;     partprobe "$disk" || return 1;     udevadm settle || return 1;     part=$(lsblk -nrpo NAME,TYPE "$disk" | awk '$2=="part" {print $1}');     [[ -n "$part" && "$part" != *$'\n'* && -b "$part" ]] || { echo 'Не найден единственный раздел'; return 1; };     mkfs.ext4 -L MEPHI_WEB "$part" || return 1;     blkid "$part"; }
+   45  mephi_prepare_disk
+   46  lsblk -e 7 -o NAME,PATH,SIZE,TYPE,FSTYPE,LABEL,MOUNTPOINTS
+   47  mephi_prepare_disk() {     local disk confirm part signatures;     lsblk -e 7 -o NAME,PATH,SIZE,TYPE,FSTYPE,LABEL,MOUNTPOINTS;     read -r -p 'Полный путь к ПУСТОМУ второму диску: ' disk;     [[ "$disk" == /dev/* && -b "$disk" ]] || { echo 'Это не блочное устройство'; return 1; };     [[ "$(lsblk -dn -o TYPE "$disk")" == disk ]] || { echo 'Нужен целый диск'; return 1; };     [[ "$(lsblk -nr -o NAME "$disk" | wc -l)" -eq 1 ]] || { echo 'На диске есть разделы/дочерние устройства. СТОП'; return 1; };     if lsblk -nr -o MOUNTPOINTS "$disk" | grep -q '[^[:space:]]'; then         echo 'Диск используется. СТОП'; return 1;     fi;     signatures=$(wipefs --no-act --noheadings --output TYPE "$disk") || return 1;     [[ -z "$signatures" ]] || { echo 'Найдены сигнатуры. Нужен новый пустой диск'; return 1; };     if blkid -L MEPHI_WEB >/dev/null 2>&1; then         echo 'Метка MEPHI_WEB уже существует. Повторно форматировать не надо'; return 1;     fi;     lsblk -d -o PATH,SIZE,MODEL,SERIAL "$disk";     read -r -p "Для форматирования введите точно ERASE $disk : " confirm;     [[ "$confirm" == "ERASE $disk" ]] || { echo 'Отменено'; return 1; };     parted -s "$disk" mklabel gpt || return 1;     parted -s -a optimal "$disk" mkpart primary ext4 1MiB 100% || return 1;     partprobe "$disk" || return 1;     udevadm settle || return 1;     part=$(lsblk -nrpo NAME,TYPE "$disk" | awk '$2=="part" {print $1}');     [[ -n "$part" && "$part" != *$'\n'* && -b "$part" ]] || { echo 'Не найден единственный раздел'; return 1; };     mkfs.ext4 -L MEPHI_WEB "$part" || return 1;     blkid "$part"; }
+   48  mephi_prepare_disk
+   49  ls -l /dev/sdb
+   50  lsblk -e 7 -o NAME,PATH,SIZE,TYPE,FSTYPE,LABEL,MOUNTPOINTS
+   51  if test -b /dev/sdb; then     echo 'Диск /dev/sdb найден'; else     echo 'Устройство /dev/sdb отсутствует'; fi
+   52  (     set -e;      test -b /dev/sdb;      if [ "$(lsblk -nr -o NAME /dev/sdb | wc -l)" -ne 1 ]; then         echo 'СТОП: на диске уже есть разделы';         exit 1;     fi;      signatures=$(wipefs --no-act --noheadings --output TYPE /dev/sdb);     if [ -n "$signatures" ]; then         echo 'СТОП: на диске обнаружены данные';         exit 1;     fi;      parted -s /dev/sdb mklabel gpt;     parted -s -a optimal /dev/sdb mkpart primary ext4 1MiB 100%;     partprobe /dev/sdb;     udevadm settle;      mkfs.ext4 -L MEPHI_WEB /dev/sdb1;      mkdir -p /mephi-web;      if ! awk '$1 !~ /^#/ && ($1=="LABEL=MEPHI_WEB" || $2=="/mephi-web") {found=1} END {exit !found}' /etc/fstab; then         printf '\nLABEL=MEPHI_WEB /mephi-web ext4 defaults,nodev,nosuid,noexec 0 2\n' >> /etc/fstab;     fi;      systemctl daemon-reload;     mount /mephi-web;     findmnt /mephi-web;      echo 'ГОТОВО: диск подготовлен и смонтирован'; )
+   53  mephi_create_users() {     local name uid;     for name in user1 user2 user3 curator1 curator2; do         if getent passwd "$name" >/dev/null; then             echo "Пользователь $name уже существует. Не создавайте повторно"; return 1;         fi;     done;     for uid in 5501 5502 5503; do         if getent passwd "$uid" >/dev/null; then             echo "UID $uid уже занят"; return 1;         fi;     done;     if getent group curators >/dev/null || getent group 4444 >/dev/null || getent group mephi-dev >/dev/null; then         echo 'Группа/нужный GID уже существует. Проверьте конфликты'; return 1;     fi;     groupadd mephi-dev || return 1;     groupadd -g 4444 curators || return 1;     useradd -m -u 5501 -g mephi-dev -s /bin/bash user1 || return 1;     useradd -m -u 5502 -g mephi-dev -s /bin/bash user2 || return 1;     useradd -m -u 5503 -g mephi-dev -s /bin/bash user3 || return 1;     useradd -m -g curators -s /bin/bash curator1 || return 1;     useradd -m -g curators -s /bin/bash curator2 || return 1;     mkdir -p /data/mephi-2026;     chmod 0755 /data;     chown root:mephi-dev /data/mephi-2026;     chmod 2770 /data/mephi-2026;     setfacl -m u::rwx,g::rwx,g:curators:r-x,m::rwx,o::--- /data/mephi-2026 || return 1;     setfacl -d -m u::rwx,g::rwx,g:curators:r-x,m::rwx,o::--- /data/mephi-2026 || return 1;     restorecon -Rv /data;     id user1;     id user2;     id user3;     id curator1;     id curator2;     getfacl /data/mephi-2026; }
+   54  mephi_create_users
+   55  mephi_test_acl() {     local writer reader file;     for writer in user1 user2 user3; do         runuser -u "$writer" -- sh -c 'umask 077; mkdir -p "/data/mephi-2026/test-$1"; printf "created by %s\n" "$1" > "/data/mephi-2026/test-$1/file.txt"' sh "$writer" || return 1;         file="/data/mephi-2026/test-$writer/file.txt";         for reader in user1 user2 user3; do             runuser -u "$reader" -- sh -c 'printf "edited by %s\n" "$1" >> "$2"; cat "$2"' sh "$reader" "$file" || return 1;         done;         for reader in curator1 curator2; do             runuser -u "$reader" -- cat "$file" || return 1;             if runuser -u "$reader" -- sh -c 'printf "forbidden\n" >> "$1"' sh "$file"; then                 echo 'ОШИБКА: куратор смог писать'; return 1;             fi;             if runuser -u "$reader" -- touch "/data/mephi-2026/forbidden-$reader"; then                 echo 'ОШИБКА: куратор смог создать файл'; return 1;             fi;         done;     done;     if runuser -u nobody -- cat /data/mephi-2026/test-user1/file.txt; then         echo 'ОШИБКА: посторонний смог прочитать файл'; return 1;     fi;     echo 'PASS: совместная запись, чтение кураторов и запрет для посторонних'; }
+   56  mephi_test_acl > "/root/mephi-session-project-2026/access-tests.out" 2>&1
+   57  cat "/root/mephi-session-project-2026/access-tests.out"
+   58  TCPDUMP_BIN=$(readlink -f "$(command -v tcpdump)")
+   59  test -f "$TCPDUMP_BIN" &&     chmod 0755 "$TCPDUMP_BIN" &&     setcap 'cap_net_raw,cap_net_admin=ep' "$TCPDUMP_BIN"
+   60  stat "$TCPDUMP_BIN"
+   61  getcap "$TCPDUMP_BIN"
+   62  getcap /usr/sbin/tcpdump
+   63  (     set -e;      dnf -y install dnf-plugins-core libcap libcap-ng-utils;      rpm_dir=$(mktemp -d /tmp/mephi-tcpdump.XXXXXX);      dnf download --resolve --alldeps         --downloaddir="$rpm_dir"         "tcpdump.$(rpm --eval '%{_arch}')";      deps=();     tcpdump_rpms=();      for pkg in "$rpm_dir"/*.rpm; do         if [ "$(rpm -qp --qf '%{NAME}' "$pkg")" = tcpdump ]; then             tcpdump_rpms+=("$pkg");         else             deps+=("$pkg");         fi;     done;      [ "${#tcpdump_rpms[@]}" -eq 1 ];      if [ "${#deps[@]}" -gt 0 ]; then         dnf -y install "${deps[@]}";     fi;      rpm -K "${tcpdump_rpms[0]}";     rpm -Uvh --replacepkgs "${tcpdump_rpms[0]}";      tcpdump_bin=$(rpm -ql tcpdump | awk '/\/s?bin\/tcpdump$/ {print; exit}');     test -n "$tcpdump_bin";     test -x "$tcpdump_bin";      chmod 0755 "$tcpdump_bin";     setcap 'cap_net_raw,cap_net_admin=ep' "$tcpdump_bin";      getcap "$tcpdump_bin";      echo 'ГОТОВО: tcpdump установлен, capabilities назначены'; )
+   64  (     set -e;      dnf -y install libpcap libcap-ng libcap;      rpm_dir=$(mktemp -d /tmp/mephi-tcpdump-fixed.XXXXXX);      dnf download --downloaddir="$rpm_dir"         "tcpdump.$(rpm --eval '%{_arch}')";      rpms=("$rpm_dir"/tcpdump-*.rpm);     [ "${#rpms[@]}" -eq 1 ];     test -f "${rpms[0]}";      rpm -K "${rpms[0]}";     rpm -Uvh --replacepkgs --test "${rpms[0]}";     rpm -Uvh --replacepkgs "${rpms[0]}";      tcpdump_bin=$(rpm -ql tcpdump | awk '/\/s?bin\/tcpdump$/ {print; exit}');     test -n "$tcpdump_bin";     test -x "$tcpdump_bin";      chmod 0755 "$tcpdump_bin";     setcap 'cap_net_raw,cap_net_admin=ep' "$tcpdump_bin";     getcap "$tcpdump_bin";      mkdir -p /root/mephi-session-project-2026;     rpm -qi tcpdump > /root/mephi-session-project-2026/tcpdump-rpm.out;      echo 'ГОТОВО: tcpdump установлен и настроен'; )
+   65  TCPDUMP_BIN=$(readlink -f "$(command -v tcpdump)")
+   66  test -f "$TCPDUMP_BIN" &&     chmod 0755 "$TCPDUMP_BIN" &&     setcap 'cap_net_raw,cap_net_admin=ep' "$TCPDUMP_BIN"
+   67  stat "$TCPDUMP_BIN"
+   68  getcap "$TCPDUMP_BIN"
+   69  getcap /usr/sbin/tcpdump
+   70  mephi_test_tcpdump() {     local cap_pid rc;     runuser -u user1 -- timeout 15 tcpdump -i lo -nn -c 2 icmp > "/root/mephi-session-project-2026/tcpdump-test.out" 2>&1 &     cap_pid=$!;     sleep 1;     ping -c 2 127.0.0.1 >/dev/null;     wait "$cap_pid";     rc=$?;     cat "/root/mephi-session-project-2026/tcpdump-test.out";     [[ "$rc" -eq 0 ]] || { echo "ОШИБКА tcpdump, код $rc"; return 1; };     echo 'PASS: tcpdump выполнился от user1'; }
+   71  mephi_test_tcpdump
+   72  cat > /etc/security/pwquality.conf <<'EOF'
+   73  # MEPHI: real minimum password length, including root-initiated changes
+   74  minlen = 12
+   75  dcredit = 0
+   76  ucredit = 0
+   77  lcredit = 0
+   78  ocredit = 0
+   79  enforcing = 1
+   80  enforce_for_root
+   81  EOF
+   82  chmod 0644 /etc/security/pwquality.conf
+   83  mephi_password_pam() {     local file;     authselect current || true;     if [[ ! -d /etc/authselect/custom/mephi ]]; then         authselect create-profile mephi --base-on=sssd || return 1;     fi;     for file in /etc/authselect/custom/mephi/system-auth /etc/authselect/custom/mephi/password-auth; do         grep -Eq '^[[:space:]]*password[[:space:]].*pam_pwquality[.]so' "$file" || {             echo "В $file нет ожидаемого pam_pwquality. СТОП"; return 1;         };         sed -i -E '/^[[:space:]]*password[[:space:]].*pam_pwquality[.]so/c\password requisite pam_pwquality.so retry=3 minlen=12 dcredit=0 ucredit=0 lcredit=0 ocredit=0 enforcing=1 enforce_for_root' "$file" || return 1;     done;     authselect select custom/mephi with-faillock --force -b || return 1;     authselect check || return 1;     grep -H 'pam_pwquality' /etc/pam.d/system-auth /etc/pam.d/password-auth; }
+   84  mephi_password_pam
+   85  mephi_password_age() {     local key value min_uid user;     for key in PASS_MAX_DAYS PASS_MIN_DAYS PASS_WARN_AGE; do         case "$key" in             PASS_MAX_DAYS) value=90 ;;             PASS_MIN_DAYS) value=0 ;;             PASS_WARN_AGE) value=7 ;;         esac;         if grep -qE "^[[:space:]]*$key[[:space:]]+" /etc/login.defs; then             sed -i -E "s/^[[:space:]]*$key[[:space:]]+.*/$key $value/" /etc/login.defs || return 1;         else             printf '%s %s\n' "$key" "$value" >> /etc/login.defs;         fi;     done;     min_uid=$(awk '$1=="UID_MIN" {print $2; exit}' /etc/login.defs);     min_uid=${min_uid:-1000};     while IFS= read -r user; do         chage -M 90 -m 0 -W 7 "$user" || return 1;     done < <(awk -F: -v min="$min_uid" '$3==0 || ($3>=min && $3<65534 && $7 !~ /(nologin|false)$/) {print $1}' /etc/passwd);     chage -l user1;     chage -l "АДМИН"; }
+   86  mephi_password_age
+   87  passwd user1
+   88  passwd user2
+   89  passwd user3
+   90  passwd curator1
+   91  passwd curator2
+   92  passwd vitaliy
+   93  passwd vitaliy
+   94  passwd root
+   95  cat > /etc/security/mephi-console-access.conf <<'EOF'
+   96  # Applied only by /etc/pam.d/login
+   97  - : (curators) : ALL
+   98  + : ALL : ALL
+   99  EOF
+  100  chmod 0644 /etc/security/mephi-console-access.conf
+  101  if ! grep -q 'accessfile=/etc/security/mephi-console-access.conf' /etc/pam.d/login; then     sed -i '1i account required pam_access.so nodefgroup accessfile=/etc/security/mephi-console-access.conf' /etc/pam.d/login; fi
+  102  restorecon -v /etc/pam.d/login /etc/security/mephi-console-access.conf
+  103  head -n 5 /etc/pam.d/login
+  104  cat /etc/security/mephi-console-access.conf
+  105  mephi_create_page() {     mountpoint -q /mephi-web || { echo 'Диск не смонтирован. СТОП'; return 1; };     chown root:root /mephi-web;     chmod 0755 /mephi-web;     printf 'Hello from Student: %s\n' "372185" > /mephi-web/index.html;     chmod 0644 /mephi-web/index.html;     if semanage fcontext -l -C | awk '{print $1}' | grep -Fxq '/mephi-web(/.*)?'; then         semanage fcontext -m -t httpd_sys_content_t '/mephi-web(/.*)?' || return 1;     else         semanage fcontext -a -t httpd_sys_content_t '/mephi-web(/.*)?' || return 1;     fi;     restorecon -Rv /mephi-web || return 1;     ls -Zd /mephi-web /mephi-web/index.html; }
+  106  mephi_create_page
+  107  cat /mephi-web/index.html
+  108  command cp -an /etc/nginx/nginx.conf /root/mephi-backup/nginx.conf
+  109  cat > /etc/nginx/nginx.conf <<'EOF'
+  110  user nginx;
+  111  worker_processes auto;
+  112  error_log /var/log/nginx/error.log;
+  113  pid /run/nginx.pid;
+  114  events {
+  115      worker_connections 1024;
+  116  }
+  117  http {
+  118      include /etc/nginx/mime.types;
+  119      default_type application/octet-stream;
+  120      access_log /var/log/nginx/access.log;
+  121      sendfile on;
+  122      server {
+  123          listen 80 default_server;
+  124          server_name mephi-2026.domain.local localhost;
+  125          root /mephi-web;
+  126          index index.html;
+  127          charset utf-8;
+  128          location / {
+  129              try_files $uri $uri/ =404;
+  130          }
+  131      }
+  132  }
+  133  EOF
+  134  mkdir -p /etc/systemd/system/nginx.service.d
+  135  cat > /etc/systemd/system/nginx.service.d/mephi-mount.conf <<'EOF'
+  136  [Unit]
+  137  RequiresMountsFor=/mephi-web
+  138  EOF
+  139  restorecon -v /etc/nginx/nginx.conf
+  140  systemctl daemon-reload
+  141  mephi_start_nginx() {     nginx -t || return 1;     systemctl enable nginx || return 1;     systemctl restart nginx || return 1;     systemctl is-enabled nginx;     systemctl is-active nginx;     systemctl --no-pager --full status nginx;     curl --fail --silent --show-error --noproxy '*' http://127.0.0.1/; }
+  142  mephi_start_nginx
+  143  $ curl http://localhost/
+  144  dnf install curl
+  145  $ curl http://localhost/
+  146  curl localhost
+  147  history -a
+  148  sync
+  149  systemctl reboot
+  150  mephi_check_after_reboot() {     local actual expected;     hostnamectl --static;     [[ "$(hostnamectl --static)" == mephi-2026.domain.local ]] || return 1;     [[ "$(systemctl get-default)" == multi-user.target ]] || return 1;     [[ "$(getenforce)" == Enforcing ]] || return 1;     mountpoint -q /mephi-web || return 1;     findmnt /mephi-web;     [[ "$(findmnt -n -o FSTYPE /mephi-web)" == ext4 ]] || return 1;     [[ "$(findmnt -n -o LABEL /mephi-web)" == MEPHI_WEB ]] || return 1;     systemctl is-enabled --quiet nginx || return 1;     systemctl is-active --quiet nginx || return 1;     nginx -t || return 1;     getcap /usr/sbin/tcpdump;     getcap /usr/sbin/tcpdump | grep -q 'cap_net_raw' || return 1;     getcap /usr/sbin/tcpdump | grep -q 'cap_net_admin' || return 1;     ls -Zd /mephi-web /mephi-web/index.html;     getfacl /data/mephi-2026;     runuser -u user2 -- test -w /data/mephi-2026/test-user1/file.txt || return 1;     runuser -u curator1 -- test -r /data/mephi-2026/test-user1/file.txt || return 1;     if runuser -u curator1 -- test -w /data/mephi-2026/test-user1/file.txt; then return 1; fi;     grep -q 'accessfile=/etc/security/mephi-console-access.conf' /etc/pam.d/login || return 1;     authselect check || return 1;     expected="Hello from Student: 372185";     actual=$(curl --fail --silent --show-error --noproxy '*' http://localhost/) || return 1;     printf '%s\n' "$actual";     [[ "$actual" == "$expected" ]] || return 1;     ping -c 4 8.8.8.8 || return 1;     echo 'PASS: проверки после перезагрузки'; }
+  151  mephi_check_after_reboot > "/root/mephi-session-project-2026/reboot-check.out" 2>&1
+  152  cat "/root/mephi-session-project-2026/reboot-check.out"
+  153  mephi_collect_results() {     ping -c 4 8.8.8.8 > /root/ping.out 2>&1 || return 1;     stat /data/mephi-2026 > /root/stat.out || return 1;     stat /mephi-web >> /root/stat.out || return 1;     getcap /usr/sbin/tcpdump > /root/getcap.out || return 1;     dnf history > /root/dnf.out || return 1;     journalctl -u nginx -b --no-pager > /root/journalctl.out || return 1;     getenforce > /root/getenforce.out || return 1;     curl --fail --silent --show-error --noproxy '*' http://localhost/ > /root/curl.out || return 1;     history -a;     history > /root/history.out;     command cp /root/ping.out /root/stat.out /root/getcap.out /root/dnf.out        /root/journalctl.out /root/getenforce.out /root/curl.out /root/history.out "/root/mephi-session-project-2026/" || return 1;     command cp /etc/fstab /etc/passwd /etc/group /etc/security/pwquality.conf "/root/mephi-session-project-2026/" || return 1;     getfacl -R /data/mephi-2026 > "/root/mephi-session-project-2026/acl.out";     semanage fcontext -l -C > "/root/mephi-session-project-2026/selinux-local.out";     command cp /etc/nginx/nginx.conf "/root/mephi-session-project-2026/nginx.conf";     command cp /etc/systemd/system/nginx.service.d/mephi-mount.conf "/root/mephi-session-project-2026/nginx-mount.conf";     command cp /etc/pam.d/login "/root/mephi-session-project-2026/pam-login";     command cp /etc/security/mephi-console-access.conf "/root/mephi-session-project-2026/mephi-console-access.conf";     command cp /etc/login.defs "/root/mephi-session-project-2026/login.defs";     command cp /etc/pam.d/system-auth "/root/mephi-session-project-2026/pam-system-auth";     command cp /etc/pam.d/password-auth "/root/mephi-session-project-2026/pam-password-auth";     {         for u in root vitaliy user1 user2 user3 curator1 curator2; do             printf '\n=== %s ===\n' "$u";             chage -l "$u";         done;     } > "/root/mephi-session-project-2026/password-aging.out";     {         hostnamectl;         cat /etc/os-release;         nmcli device status;         ip -4 address;         ip route;         findmnt /mephi-web;         lsblk -f;         systemctl is-enabled nginx;         systemctl is-active nginx;         systemctl cat nginx;         rpm -q nginx tcpdump libcap-ng-utils;     } > "/root/mephi-session-project-2026/system-checks.out" 2>&1;     echo 'Основные результаты собраны'; }
+  154  mephi_collect_results
